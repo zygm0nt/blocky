@@ -1,5 +1,7 @@
-.PHONY: all clean generate build swagger test e2e-test lint run fmt docker-build help
+.PHONY: all clean generate build swagger test e2e-test lint run fmt docker-build help tools
 .DEFAULT_GOAL:=help
+
+include .bingo/Variables.mk
 
 VERSION?=$(shell git describe --always --tags)
 BUILD_TIME?=$(shell date '+%Y%m%d-%H%M%S')
@@ -21,19 +23,20 @@ GO_BUILD_LD_FLAGS:=\
 
 GO_BUILD_OUTPUT:=$(BIN_OUT_DIR)/$(BINARY_NAME)$(BINARY_SUFFIX)
 
-# define version of golangci-lint here. If defined in tools.go, go mod perfoms automatically downgrade to older version which doesn't work with golang >=1.18
-GOLANG_LINT_VERSION=v1.50.1
-
 export PATH=$(shell go env GOPATH)/bin:$(shell echo $$PATH)
 
 all: build test lint ## Build binary (with tests)
+
+tools: ## installs tools
+	go install github.com/bwplotka/bingo@latest
+	bingo get -l -v
 
 clean: ## cleans output directory
 	rm -rf $(BIN_OUT_DIR)/*
 
 swagger: ## creates swagger documentation as html file
 	npm install bootprint bootprint-openapi html-inline
-	go run github.com/swaggo/swag/cmd/swag init -g api/api.go
+	$(SWAG) init -g api/api.go
 	$(shell) node_modules/bootprint/bin/bootprint.js openapi docs/swagger.json /tmp/swagger/
 	$(shell) node_modules/html-inline/bin/cmd.js /tmp/swagger/index.html > docs/swagger.html
 
@@ -41,7 +44,7 @@ serve_docs: ## serves online docs
 	pip install mkdocs-material
 	mkdocs serve
 
-generate: ## Go generate
+generate: tools ## Go generate
 ifdef GO_SKIP_GENERATE
 	$(info skipping go generate)
 else
@@ -59,30 +62,30 @@ ifdef BIN_AUTOCAB
 	setcap 'cap_net_bind_service=+ep' $(GO_BUILD_OUTPUT)
 endif
 
-test: ## run tests
-	go run github.com/onsi/ginkgo/v2/ginkgo --label-filter="!e2e" --coverprofile=coverage.txt --covermode=atomic -cover ./...
+test: tools ## run tests
+	$(GINKGO) --label-filter="!e2e" --coverprofile=coverage.txt --covermode=atomic -cover ./...
 
-e2e-test: ## run e2e tests
+e2e-test: tools ## run e2e tests
 	docker buildx build \
 		--build-arg VERSION=blocky-e2e \
 		--network=host \
 		-o type=docker \
 		-t blocky-e2e \
 		.
-	go run github.com/onsi/ginkgo/v2/ginkgo --label-filter="e2e" ./...
+	$(GINKGO) --label-filter="e2e" ./...
 
-race: ## run tests with race detector
-	go run github.com/onsi/ginkgo/v2/ginkgo --label-filter="!e2e" --race ./...
+race: tools ## run tests with race detector
+	$(GINKGO) --label-filter="!e2e" --race ./...
 
-lint: ## run golangcli-lint checks
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANG_LINT_VERSION) run --timeout 5m
+lint: tools ## run golangcli-lint checks
+	$(GOLANGCI_LINT) run --timeout 5m
 
 run: build ## Build and run binary
 	./$(BIN_OUT_DIR)/$(BINARY_NAME)
 
-fmt: ## gofmt and goimports all go files
-	go run mvdan.cc/gofumpt -l -w -extra .
-	find . -name '*.go' -exec goimports -w {} +
+fmt: tools ## gofmt and goimports all go files
+	$(GOFUMPT) -l -w -extra .
+	find . -name '*.go' -exec $(GOIMPORTS) -w {} +
 
 docker-build: generate ## Build docker image 
 	docker buildx build \

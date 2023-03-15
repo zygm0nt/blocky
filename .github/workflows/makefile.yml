@@ -21,25 +21,18 @@ jobs:
       matrix:
         include:
           - make: build
-            go: true
             docker: false
           - make: test
-            go: true
             docker: false
           - make: race
-            go: true
             docker: false
           - make: docker-build
-            go: false
             docker: true
           - make: e2e-test
-            go: true
             docker: true
           - make: goreleaser
-            go: false
             docker: false
           - make: lint
-            go: true
             docker: false
 
     steps:
@@ -48,7 +41,6 @@ jobs:
 
       - name: Setup Golang with cache
         uses: magnetikonline/action-golang-cache@v4
-        if: matrix.go == true
         with:
           go-version-file: go.mod
 
